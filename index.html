@@ -329,7 +329,7 @@ const steps = [
   { id:1, title:"Upload & Column Mapping", icon:"📁", color:ORANGE,
     description:"User uploads CSV/XLSX file and maps columns to required fields." },
   { id:2, title:"Matching Run", icon:"🔍", color:"#2a7de1",
-    description:"System normalizes input, generates candidates from SIRENE, computes match scores, and classifies each record." },
+    description:"System normalizes company name, retrieves candidates via blocking fallback, scores by name (55%) + address (45%), and classifies each record using composite score thresholds &amp; gap rule." },
   { id:3, title:"Assisted Validation", icon:"👤", color:"#8b5cf6",
     description:"Only for NEEDS_VALIDATION records. User reviews top 3 candidates." },
   { id:4, title:"Enrichment", icon:"📊", color:"#0891b2",
@@ -420,31 +420,89 @@ function renderStep1(s) {
 
 function renderStep2(s) {
   const processes = [
-    "Name normalization (trim, lowercase, remove accents, legal forms)",
-    "Candidate generation via postal code / city / name-key blocking",
-    "Fuzzy scoring (name + address similarity)",
-    "Classification by thresholds & gap rules"
+    "Name cleaning &amp; normalization (trim, lowercase, accents, legal forms)",
+    "Candidate retrieval via blocking fallback (Postal Code → City → Name-key → Exact name)",
+    "Fuzzy name matching on candidates (primary signal)",
+    "Address refinement: Postal Code → City → Street (exact or fuzzy)",
+    "Composite score computation &amp; classification (thresholds + gap rule on final score)"
   ];
+
+  const weights = [
+    {field:"Name", pct:55, color:"#2a7de1", desc:"Primary signal — fuzzy match after cleaning"},
+    {field:"Street", pct:25, color:"#0891b2", desc:"Exact or fuzzy match if available"},
+    {field:"City", pct:10, color:"#8b5cf6", desc:"Exact match if available"},
+    {field:"Postal Code", pct:10, color:"#7c3aed", desc:"Exact match if available"}
+  ];
+
+  const blockingLevels = [
+    {level:"1", field:"Postal Code", desc:"Search SIRENE candidates sharing the same postal code"},
+    {level:"2", field:"City", desc:"Fallback if postal code returns zero candidates"},
+    {level:"3", field:"Name-key", desc:"Derived from normalized name; used when no postal code or city available"},
+    {level:"4", field:"Exact Name", desc:"Final fallback — direct name search in SIRENE index"}
+  ];
+
   const useCases = [
-    {label:"Complete Info",desc:"Name + Address + Postal + City → strongest matching"},
-    {label:"Partial Address",desc:"Name + partial address → stricter ambiguity check"},
-    {label:"Name Only",desc:"No auto-match; always routed to validation"},
-    {label:"Ambiguous",desc:"Multiple strong matches → forced validation"},
-    {label:"No Match",desc:"Below threshold → NO_MATCH"}
+    {label:"Complete Info",desc:"Name + Street + Postal + City → strongest matching with all weight components"},
+    {label:"Partial Address",desc:"Name + some address fields → fallback blocking levels; missing fields get zero weight"},
+    {label:"Name Only",desc:"Auto-match if exactly 1 candidate ≥ threshold; otherwise → validation"},
+    {label:"Ambiguous",desc:"Multiple candidates with same high score (e.g. same name, different locations) → forced validation"},
+    {label:"No Match",desc:"No candidate above validation threshold → NO_MATCH"}
   ];
   const outcomes = [
-    {status:"AUTO_MATCH",color:"#16a34a",desc:"System-assigned SIREN"},
-    {status:"NEEDS_VALIDATION",color:"#d97706",desc:"Top 3 candidates shown"},
-    {status:"NO_MATCH",color:"#dc2626",desc:"No viable candidate"}
+    {status:"AUTO_MATCH",color:"#16a34a",desc:"Exactly 1 candidate above threshold with clear gap"},
+    {status:"NEEDS_VALIDATION",color:"#d97706",desc:"Top candidates shown for user selection"},
+    {status:"NO_MATCH",color:"#dc2626",desc:"No viable candidate above threshold"}
   ];
   return detailHeader(s) + `
-    <div class="section-label">Normalization Pipeline</div>
-    <div class="process-flow">
+    <div class="section-label">Matching Pipeline</div>
+    <div class="process-flow" style="flex-direction:column;align-items:stretch;gap:4px">
       ${processes.map((p,i) => `
-        <div class="process-chip" style="background:${hexAlpha(s.color,0.06)};border:1px solid ${hexAlpha(s.color,0.12)}">${p}</div>
-        ${i<processes.length-1 ? `<span class="process-arrow" style="color:${s.color}">→</span>` : ''}
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="mono" style="font-size:10px;color:${s.color};min-width:18px;text-align:right">${i+1}</span>
+          <div class="process-chip" style="flex:1;background:${hexAlpha(s.color,0.06)};border:1px solid ${hexAlpha(s.color,0.12)}">${p}</div>
+        </div>
       `).join('')}
     </div>
+
+    <div class="section-label" style="margin-top:20px">Score Weighting <span style="font-weight:400;font-size:10px;color:#94a3b8;letter-spacing:0">(initial — to be validated after first run)</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${weights.map(w => `
+        <div style="flex:1;min-width:120px;padding:12px;border-radius:10px;background:${hexAlpha(w.color,0.05)};border:1px solid ${hexAlpha(w.color,0.15)}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:13px;font-weight:700;color:${w.color}">${w.field}</span>
+            <span class="mono" style="font-size:16px;font-weight:800;color:${w.color}">${w.pct}%</span>
+          </div>
+          <div style="font-size:10px;color:#64748b;margin-top:4px">${w.desc}</div>
+          <div style="margin-top:6px;height:4px;border-radius:2px;background:${hexAlpha(w.color,0.12)}">
+            <div style="width:${w.pct}%;height:100%;border-radius:2px;background:${w.color}"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="section-label" style="margin-top:20px">Candidate Retrieval — Blocking Fallback Levels</div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      ${blockingLevels.map((b,i) => `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0">
+          <span class="mono" style="font-size:11px;font-weight:700;color:${s.color};background:${hexAlpha(s.color,0.1)};padding:2px 8px;border-radius:4px">L${b.level}</span>
+          <span style="font-size:12px;font-weight:700;color:${BLUE};min-width:85px">${b.field}</span>
+          <span style="font-size:11px;color:#64748b">${b.desc}</span>
+          ${i<blockingLevels.length-1 ? `<span style="margin-left:auto;font-size:10px;color:#94a3b8">↓ fallback</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:20px">
+      <div style="flex:1;padding:12px 14px;border-radius:10px;background:${hexAlpha('#2a7de1',0.05)};border:1px solid ${hexAlpha('#2a7de1',0.15)}">
+        <div style="font-size:11px;font-weight:700;color:#2a7de1;margin-bottom:4px">📐 Gap Rule</div>
+        <div style="font-size:11px;color:#475569">Computed <strong>only on the final composite score</strong>, not on individual field scores. The difference between the top two ranked candidates determines if the match is unambiguous or requires user validation.</div>
+      </div>
+      <div style="flex:1;padding:12px 14px;border-radius:10px;background:${hexAlpha('#8b5cf6',0.05)};border:1px solid ${hexAlpha('#8b5cf6',0.15)}">
+        <div style="font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px">🔑 Name-Key</div>
+        <div style="font-size:11px;color:#475569">Derived from the normalized &amp; cleaned company name. Used <strong>only during candidate retrieval</strong> (blocking phase) — not during scoring. Limits search space when postal code or city are unavailable.</div>
+      </div>
+    </div>
+
     <div class="section-label" style="margin-top:20px">Use Cases</div>
     <div class="usecase-grid">
       ${useCases.map(uc => `
