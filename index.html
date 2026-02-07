@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIREN — Process Flow</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --leyton-blue: #012d48;
+    --leyton-orange: #ec6839;
+    --leyton-light: #f0f4f8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(145deg, #fafbfd 0%, #f0f4f8 50%, #e8ecf2 100%);
+    min-height: 100vh;
+  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* Animations */
+  @keyframes fadeSlide { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes slideIn { from { opacity:0; transform:translateX(-20px); } to { opacity:1; transform:translateX(0); } }
+  .fade-in { animation: fadeSlide 0.35s ease; }
+
+  /* Header */
+  .header {
+    background: var(--leyton-blue);
+    padding: 28px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header-circle-1 {
+    position: absolute; top: -40px; right: -40px; width: 200px; height: 200px;
+    border-radius: 50%; background: rgba(236,104,57,0.08);
+  }
+  .header-circle-2 {
+    position: absolute; bottom: -60px; right: 120px; width: 140px; height: 140px;
+    border-radius: 50%; background: rgba(236,104,57,0.06);
+  }
+  .header-content { position: relative; z-index: 1; }
+  .header-tag {
+    display: inline-block; padding: 4px 12px; border-radius: 6;
+    background: var(--leyton-orange); color: #fff;
+    font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  }
+  .header-version { font-size: 11px; color: #94a3b8; margin-left: 12px; }
+  .header-title { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.5px; margin-top: 6px; }
+  .header-sub { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+
+  /* Layout */
+  .main { display: flex; max-width: 1200px; margin: 0 auto; min-height: calc(100vh - 110px); }
+  .sidebar {
+    width: 300px; padding: 20px 12px; border-right: 1px solid #e2e8f0;
+    background: #fff; flex-shrink: 0; overflow-y: auto;
+  }
+  .sidebar-label {
+    font-size: 10px; font-weight: 700; color: #94a3b8;
+    letter-spacing: 1.5px; padding: 0 18px; margin-bottom: 8px; text-transform: uppercase;
+  }
+  .detail-panel { flex: 1; padding: 28px 32px; overflow-y: auto; }
+
+  /* Step Card */
+  .step-card {
+    all: unset; cursor: pointer; display: flex; align-items: center;
+    gap: 14px; padding: 14px 18px; border-radius: 12px; width: 100%;
+    border: 2px solid transparent; transition: all 0.25s ease;
+  }
+  .step-card:hover { background: #f8fafc; }
+  .step-card.active { border-color: var(--step-color); background: color-mix(in srgb, var(--step-color) 7%, transparent); }
+  .step-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; transition: all 0.3s ease;
+    background: rgba(1,45,72,0.08);
+  }
+  .step-card.active .step-icon {
+    background: var(--step-color);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--step-color) 40%, transparent);
+  }
+  .step-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    color: #94a3b8; text-transform: uppercase;
+  }
+  .step-card.active .step-label { color: var(--step-color); }
+  .step-name { font-size: 14px; font-weight: 600; color: #64748b; transition: color 0.2s; }
+  .step-card.active .step-name { color: var(--leyton-blue); }
+  .step-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: none;
+    background: var(--step-color);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--step-color) 50%, transparent);
+  }
+  .step-card.active .step-dot { display: block; }
+  .step-connector {
+    width: 2px; height: 16px; margin-left: 33px;
+    background: #e2e8f0; transition: background 0.3s;
+  }
+  .step-connector.passed { background: color-mix(in srgb, var(--step-color) 25%, transparent); }
+
+  /* Detail Header */
+  .detail-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .detail-icon {
+    width: 48px; height: 48px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+  }
+  .detail-title { font-size: 20px; font-weight: 800; color: var(--leyton-blue); letter-spacing: -0.5px; }
+  .detail-desc { font-size: 13px; color: #64748b; margin-top: 2px; }
+
+  /* Badges */
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+
+  /* Section Label */
+  .section-label {
+    font-size: 12px; font-weight: 700; color: #94a3b8;
+    letter-spacing: 1px; margin-bottom: 10px; text-transform: uppercase;
+  }
+
+  /* Mapping Chips */
+  .mapping-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 10px; margin: 0 6px 6px 0;
+  }
+  .mapping-chip.required { background: rgba(236,104,57,0.07); border: 1px solid rgba(236,104,57,0.19); }
+  .mapping-chip.optional { background: rgba(1,45,72,0.03); border: 1px solid rgba(1,45,72,0.09); }
+  .mapping-chip span { font-size: 13px; font-weight: 600; color: var(--leyton-blue); }
+
+  /* File format box */
+  .file-format {
+    padding: 16px; border-radius: 12px; background: #f8fafc;
+    border: 1px dashed #cbd5e1; display: flex; align-items: center; gap: 12px; margin-top: 16px;
+  }
+  .file-format-icon { font-size: 24px; }
+  .file-format-title { font-size: 13px; font-weight: 600; color: var(--leyton-blue); }
+  .file-format-sub { font-size: 12px; color: #64748b; }
+
+  /* Process Flow Chips */
+  .process-flow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .process-chip {
+    padding: 6px 12px; border-radius: 8px; font-size: 12px; color: var(--leyton-blue);
+  }
+  .process-arrow { font-weight: 700; font-size: 16px; }
+
+  /* Use Case Grid */
+  .usecase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+  .usecase-card {
+    padding: 10px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0;
+  }
+  .usecase-label { font-size: 12px; font-weight: 700; }
+  .usecase-desc { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+  /* Outcome Cards */
+  .outcome-row { display: flex; gap: 10px; margin-top: 16px; }
+  .outcome-card {
+    flex: 1; padding: 12px 14px; border-radius: 10px; text-align: center;
+  }
+  .outcome-status { font-size: 12px; font-weight: 700; }
+  .outcome-desc { font-size: 11px; color: #64748b; margin-top: 4px; }
+
+  /* Trigger Banner */
+  .trigger-banner {
+    padding: 10px 16px; border-radius: 10px; display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .trigger-banner.warning { background: #fef3c7; border: 1px solid #fcd34d; }
+  .trigger-banner.warning span { font-size: 12px; font-weight: 600; color: #92400e; }
+  .trigger-banner.success { background: #d1fae5; border: 1px solid #6ee7b7; }
+  .trigger-banner.success span { font-size: 12px; font-weight: 600; color: #065f46; }
+
+  /* Candidate box */
+  .candidate-box {
+    padding: 16px; border-radius: 12px; background: #f8fafc;
+    border: 1px solid #e2e8f0; margin-bottom: 16px;
+  }
+  .candidate-item { font-size: 12px; color: #475569; padding: 4px 0; display: flex; align-items: center; gap: 8px; }
+
+  /* Action Cards */
+  .action-row { display: flex; gap: 12px; }
+  .action-card {
+    flex: 1; padding: 14px 12px; border-radius: 12px; text-align: center; cursor: default;
+  }
+  .action-icon { font-size: 22px; }
+  .action-label { font-size: 12px; font-weight: 700; margin-top: 6px; }
+  .action-result { font-size: 10px; color: #64748b; margin-top: 4px; }
+
+  /* Source Cards (Enrichment) */
+  .source-card {
+    padding: 16px; border-radius: 12px; cursor: pointer;
+    border: 1px solid #e2e8f0; background: #f8fafc;
+    transition: all 0.2s; margin-bottom: 10px;
+  }
+  .source-card.expanded { border: 2px solid rgba(8,145,178,0.25); background: rgba(8,145,178,0.04); }
+  .source-header { display: flex; justify-content: space-between; align-items: center; }
+  .source-name { font-size: 13px; font-weight: 700; color: var(--leyton-blue); }
+  .source-index { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+  .source-arrow { font-size: 18px; transition: transform 0.2s; }
+  .source-card.expanded .source-arrow { transform: rotate(180deg); }
+  .source-detail {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: none;
+  }
+  .source-card.expanded .source-detail { display: block; }
+  .source-target { font-size: 11px; color: #64748b; margin-top: 8px; }
+  .source-rule { font-size: 11px; color: #475569; padding: 2px 0; display: flex; gap: 6px; }
+
+  /* SF Key Banner */
+  .sf-key-banner {
+    padding: 10px 16px; border-radius: 10px; display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .sf-key-banner code {
+    background: rgba(3,105,161,0.1); padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* SF Outcome */
+  .sf-outcome {
+    padding: 16px; border-radius: 12px; margin-bottom: 10px;
+  }
+  .sf-outcome-header { display: flex; justify-content: space-between; align-items: center; }
+  .sf-outcome-action { font-size: 12px; color: #64748b; }
+  .sf-fields { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .sf-field {
+    font-size: 10px; padding: 3px 8px; border-radius: 6px;
+    background: #fff; border: 1px solid #e2e8f0; color: #475569;
+  }
+
+  /* Eligibility */
+  .eligibility-item {
+    padding: 8px 14px; border-radius: 8px; background: #f0fdf4;
+    border: 1px solid #bbf7d0; font-size: 12px; color: #166534; margin-bottom: 6px;
+  }
+
+  /* Filter Grid */
+  .filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .filter-item {
+    padding: 10px 14px; border-radius: 10px; background: #f8fafc;
+    border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;
+  }
+  .filter-name { font-size: 12px; font-weight: 600; color: var(--leyton-blue); }
+  .filter-type {
+    font-size: 10px; padding: 2px 8px; border-radius: 6px;
+  }
+
+  /* Export Cards */
+  .export-row { display: flex; gap: 16px; }
+  .export-card { flex: 1; padding: 16px; border-radius: 12px; }
+  .export-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+  .export-item { font-size: 11px; color: #475569; padding: 3px 0; display: flex; align-items: center; gap: 6px; }
+  .export-dot { font-size: 8px; }
+
+  /* Decision Flow Footer */
+  .decision-flow {
+    padding: 16px; border-radius: 14px; background: #f8fafc;
+    border: 1px solid #e2e8f0; margin-top: 16px;
+  }
+  .decision-flow-label {
+    font-size: 10px; font-weight: 700; color: #94a3b8;
+    letter-spacing: 1.5px; margin-bottom: 12px; text-transform: uppercase;
+  }
+  .decision-states { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .state-badge { padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700; }
+  .state-sep { color: #cbd5e1; font-size: 14px; }
+  .decision-note { font-size: 10px; color: #94a3b8; text-align: center; margin-top: 8px; }
+
+  /* Progress Dots */
+  .progress { display: flex; gap: 4px; margin-top: 20px; justify-content: center; }
+  .progress-dot {
+    height: 8px; border-radius: 4px; cursor: pointer;
+    background: #e2e8f0; transition: all 0.3s ease; width: 8px;
+  }
+  .progress-dot.active { width: 28px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-circle-1"></div>
+  <div class="header-circle-2"></div>
+  <div class="header-content">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+      <span class="header-tag mono">SIREN</span>
+      <span class="header-version mono">v1.0 — Process Flow</span>
+    </div>
+    <div class="header-title">French Company Matching &amp; Enrichment</div>
+    <div class="header-sub">End-to-end pipeline: Upload → Match → Validate → Enrich → Reconcile → Export</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-label mono">User Journey</div>
+    <div id="step-list"></div>
+  </div>
+
+  <!-- Detail Panel -->
+  <div class="detail-panel">
+    <div id="detail-content" class="fade-in"></div>
+
+    <!-- Decision Flow -->
+    <div class="decision-flow">
+      <div class="decision-flow-label mono">Decision Flow — Record States</div>
+      <div class="decision-states">
+        <span class="state-badge mono" style="background:#dcfce7;color:#166534;">AUTO_MATCH</span>
+        <span class="state-sep">|</span>
+        <span class="state-badge mono" style="background:#dbeafe;color:#1e40af;">USER_VALIDATED</span>
+        <span class="state-sep">|</span>
+        <span class="state-badge mono" style="background:#fee2e2;color:#991b1b;">NO_MATCH</span>
+        <span class="state-sep">|</span>
+        <span class="state-badge mono" style="background:#f3f4f6;color:#374151;">SKIPPED</span>
+      </div>
+      <div class="decision-note">Every record must resolve to exactly one terminal state</div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress" id="progress-dots"></div>
+  </div>
+</div>
+
+<script>
+const BLUE = '#012d48', ORANGE = '#ec6839';
+
+const steps = [
+  { id:1, title:"Upload & Column Mapping", icon:"📁", color:ORANGE,
+    description:"User uploads CSV/XLSX file and maps columns to required fields." },
+  { id:2, title:"Matching Run", icon:"🔍", color:"#2a7de1",
+    description:"System normalizes input, generates candidates from SIRENE, computes match scores, and classifies each record." },
+  { id:3, title:"Assisted Validation", icon:"👤", color:"#8b5cf6",
+    description:"Only for NEEDS_VALIDATION records. User reviews top 3 candidates." },
+  { id:4, title:"Enrichment", icon:"📊", color:"#0891b2",
+    description:"For AUTO_MATCH and USER_VALIDATED records, enrich with data from multiple sources." },
+  { id:5, title:"Salesforce Reconciliation", icon:"☁️", color:"#0369a1",
+    description:"Match enriched records against Salesforce Accounts using SIREN__c." },
+  { id:6, title:"Filters for Creation", icon:"🎯", color:"#7c3aed",
+    description:"User filters records eligible for Salesforce creation." },
+  { id:7, title:"Export", icon:"📤", color:ORANGE,
+    description:"Generate final deliverables for audit and Salesforce creation." },
+];
+
+let activeStep = 1;
+let expandedSource = null;
+
+function hexAlpha(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function badge(text, color) {
+  return `<span class="badge mono" style="background:${hexAlpha(color,0.09)};color:${color};border:1px solid ${hexAlpha(color,0.19)}">${text}</span>`;
+}
+
+function setActive(id) {
+  activeStep = id;
+  expandedSource = null;
+  renderSidebar();
+  renderDetail();
+  renderProgress();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('step-list');
+  el.innerHTML = steps.map((s, i) => `
+    <div style="animation:slideIn 0.3s ease ${i*0.05}s both">
+      <button class="step-card ${activeStep===s.id?'active':''}" style="--step-color:${s.color}" onclick="setActive(${s.id})">
+        <div class="step-icon">${s.icon}</div>
+        <div style="flex:1;text-align:left">
+          <div class="step-label mono">Step ${s.id}</div>
+          <div class="step-name">${s.title}</div>
+        </div>
+        <div class="step-dot" style="--step-color:${s.color};background:${s.color};box-shadow:0 0 8px ${hexAlpha(s.color,0.5)}"></div>
+      </button>
+      ${i < steps.length-1 ? `<div class="step-connector ${activeStep > s.id ? 'passed' : ''}" style="--step-color:${s.color};${activeStep > s.id ? 'background:'+hexAlpha(s.color,0.25) : ''}"></div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderProgress() {
+  document.getElementById('progress-dots').innerHTML = steps.map(s =>
+    `<div class="progress-dot ${activeStep===s.id?'active':''}" style="background:${activeStep===s.id?s.color:'#e2e8f0'}" onclick="setActive(${s.id})"></div>`
+  ).join('');
+}
+
+function detailHeader(s) {
+  return `<div class="detail-header">
+    <div class="detail-icon" style="background:${s.color};box-shadow:0 6px 20px ${hexAlpha(s.color,0.2)}">${s.icon}</div>
+    <div>
+      <div class="detail-title">${s.title}</div>
+      <div class="detail-desc">${s.description}</div>
+    </div>
+  </div>`;
+}
+
+function renderStep1(s) {
+  const mappings = [
+    {field:"Name",required:true},{field:"Address",required:false},
+    {field:"City",required:false},{field:"Postal Code",required:false}
+  ];
+  return detailHeader(s) + `
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${mappings.map(m => `
+        <div class="mapping-chip ${m.required?'required':'optional'}">
+          <span>${m.field}</span>
+          ${badge(m.required?'Required':'Optional', m.required?ORANGE:'#6b7280')}
+        </div>
+      `).join('')}
+    </div>
+    <div class="file-format">
+      <span class="file-format-icon">📄</span>
+      <div>
+        <div class="file-format-title">Accepted Formats</div>
+        <div class="file-format-sub">CSV, XLSX — drag & drop or browse</div>
+      </div>
+    </div>`;
+}
+
+function renderStep2(s) {
+  const processes = [
+    "Name normalization (trim, lowercase, remove accents, legal forms)",
+    "Candidate generation via postal code / city / name-key blocking",
+    "Fuzzy scoring (name + address similarity)",
+    "Classification by thresholds & gap rules"
+  ];
+  const useCases = [
+    {label:"Complete Info",desc:"Name + Address + Postal + City → strongest matching"},
+    {label:"Partial Address",desc:"Name + partial address → stricter ambiguity check"},
+    {label:"Name Only",desc:"No auto-match; always routed to validation"},
+    {label:"Ambiguous",desc:"Multiple strong matches → forced validation"},
+    {label:"No Match",desc:"Below threshold → NO_MATCH"}
+  ];
+  const outcomes = [
+    {status:"AUTO_MATCH",color:"#16a34a",desc:"System-assigned SIREN"},
+    {status:"NEEDS_VALIDATION",color:"#d97706",desc:"Top 3 candidates shown"},
+    {status:"NO_MATCH",color:"#dc2626",desc:"No viable candidate"}
+  ];
+  return detailHeader(s) + `
+    <div class="section-label">Normalization Pipeline</div>
+    <div class="process-flow">
+      ${processes.map((p,i) => `
+        <div class="process-chip" style="background:${hexAlpha(s.color,0.06)};border:1px solid ${hexAlpha(s.color,0.12)}">${p}</div>
+        ${i<processes.length-1 ? `<span class="process-arrow" style="color:${s.color}">→</span>` : ''}
+      `).join('')}
+    </div>
+    <div class="section-label" style="margin-top:20px">Use Cases</div>
+    <div class="usecase-grid">
+      ${useCases.map(uc => `
+        <div class="usecase-card">
+          <div class="usecase-label" style="color:${s.color}">${uc.label}</div>
+          <div class="usecase-desc">${uc.desc}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="section-label" style="margin-top:20px">Classification Outcomes</div>
+    <div class="outcome-row">
+      ${outcomes.map(o => `
+        <div class="outcome-card" style="background:${hexAlpha(o.color,0.05)};border:2px solid ${hexAlpha(o.color,0.15)}">
+          <div class="outcome-status mono" style="color:${o.color}">${o.status}</div>
+          <div class="outcome-desc">${o.desc}</div>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function renderStep3(s) {
+  const actions = [
+    {label:"Confirm Match",icon:"✅",result:"USER_VALIDATED",color:"#16a34a"},
+    {label:"No Match",icon:"❌",result:"USER_REJECTED → NO_MATCH",color:"#dc2626"},
+    {label:"Skip",icon:"⏭️",result:"SKIPPED (pending)",color:"#6b7280"}
+  ];
+  return detailHeader(s) + `
+    <div class="trigger-banner warning">
+      <span style="font-size:16px">⚡</span>
+      <span>Triggered only for NEEDS_VALIDATION records</span>
+    </div>
+    <div class="candidate-box">
+      <div class="section-label">Top 3 Candidates Displayed</div>
+      <div class="candidate-item"><span style="color:${s.color}">●</span> Denomination + address + SIREN + score</div>
+      <div class="candidate-item"><span style="color:${s.color}">●</span> Full context: siège address, source, breakdown</div>
+    </div>
+    <div class="action-row">
+      ${actions.map(a => `
+        <div class="action-card" style="background:${hexAlpha(a.color,0.05)};border:2px solid ${hexAlpha(a.color,0.12)}">
+          <div class="action-icon">${a.icon}</div>
+          <div class="action-label" style="color:${a.color}">${a.label}</div>
+          <div class="action-result mono">${a.result}</div>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function toggleSource(i) {
+  expandedSource = expandedSource === i ? null : i;
+  renderDetail();
+}
+
+function renderStep4(s) {
+  const sources = [
+    { name:"SIRENE Unité Légale", index:"fr_siren_unitelegale_raw_zone_v20211214",
+      fields:["Code NAF (activité principale)"], target:"NACE__c", rules:null },
+    { name:"INPI Financial Index", index:"fr_financials_data_ingested_raw_zone_v20241114",
+      fields:["Chiffre d'affaire (CA)","Effectif"], target:"CA_data__c / Effectif_data__c",
+      rules:["One bilan per SIREN per fiscal year","Prefer BILAN C over BILAN S","Most recent dateCloture wins"] },
+    { name:"INPI Hierarchy", index:"SQL Server dataset",
+      fields:["SIREN tête de groupe","Denomination tête de groupe"], target:"Head of Group",
+      rules:["Filter rolePourEntreprise IN ('1','2')","Retrieve siren + enseigne"] }
+  ];
+  return detailHeader(s) + `
+    <div class="trigger-banner success">
+      <span style="font-size:16px">✓</span>
+      <span>Runs after SIREN confirmed (AUTO_MATCH / USER_VALIDATED)</span>
+    </div>
+    ${sources.map((src,i) => `
+      <div class="source-card ${expandedSource===i?'expanded':''}" onclick="toggleSource(${i})">
+        <div class="source-header">
+          <div>
+            <div class="source-name">${src.name}</div>
+            <div class="source-index mono">${src.index}</div>
+          </div>
+          <span class="source-arrow" style="color:${s.color}">▾</span>
+        </div>
+        <div class="source-detail">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            ${src.fields.map(f => badge(f, s.color)).join('')}
+          </div>
+          <div class="source-target"><strong>Target:</strong> ${src.target}</div>
+          ${src.rules ? src.rules.map(r => `<div class="source-rule"><span style="color:${s.color}">▸</span> ${r}</div>`).join('') : ''}
+        </div>
+      </div>
+    `).join('')}`;
+}
+
+function renderStep5(s) {
+  const outcomes = [
+    { status:"SF_FOUND_SINGLE", color:"#16a34a", action:"Update CA, Effectif, NACE, Statut",
+      fields:["CA_data__c","CA_date__c","Effectif_data__c","Effectif_date__c","NACE__c","Statut__c"] },
+    { status:"SF_FOUND_MULTIPLE", color:"#d97706", action:"Flag anomaly — CRM Ops review",
+      fields:["List all Account IDs"] },
+    { status:"SF_NOT_FOUND", color:"#2a7de1", action:"Add to 'Create candidates' list", fields:[] }
+  ];
+  return detailHeader(s) + `
+    <div class="sf-key-banner" style="background:${hexAlpha(s.color,0.06)};border:1px solid ${hexAlpha(s.color,0.19)}">
+      <span style="font-size:14px">🔑</span>
+      <span style="font-size:12px;font-weight:600;color:${s.color}">
+        Match key: <code class="mono" style="background:${hexAlpha(s.color,0.1)};padding:2px 6px;border-radius:4px">SIREN__c</code>
+      </span>
+    </div>
+    ${outcomes.map(o => `
+      <div class="sf-outcome" style="background:${hexAlpha(o.color,0.04)};border:2px solid ${hexAlpha(o.color,0.12)}">
+        <div class="sf-outcome-header">
+          ${badge(o.status, o.color)}
+          <span class="sf-outcome-action">${o.action}</span>
+        </div>
+        ${o.fields.length ? `<div class="sf-fields">${o.fields.map(f => `<span class="sf-field mono">${f}</span>`).join('')}</div>` : ''}
+      </div>
+    `).join('')}`;
+}
+
+function renderStep6(s) {
+  const eligibility = [
+    "match_status = AUTO_MATCH or USER_VALIDATED",
+    "sf_status = SF_NOT_FOUND",
+    "final_score ≥ threshold (e.g. 85)"
+  ];
+  const filters = [
+    {name:"NAF / NACE",type:"Multi-select"},{name:"Turnover range",type:"Range slider"},
+    {name:"Effectif range",type:"Range slider"},{name:"Tête de groupe",type:"Text / Select"},
+    {name:"Match score",type:"Range"},{name:"City / Postal code",type:"Text"},
+    {name:"Source",type:"Select (SIRENE/INPI/hybrid)"}
+  ];
+  return detailHeader(s) + `
+    <div class="section-label">Eligibility Criteria</div>
+    ${eligibility.map(e => `<div class="eligibility-item mono">✓ ${e}</div>`).join('')}
+    <div class="section-label" style="margin-top:20px">Available Filters</div>
+    <div class="filter-grid">
+      ${filters.map(f => `
+        <div class="filter-item">
+          <span class="filter-name">${f.name}</span>
+          <span class="filter-type mono" style="background:${hexAlpha(s.color,0.07)};color:${s.color}">${f.type}</span>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function renderStep7(s) {
+  const exports = [
+    { name:"Full Results (Audit)", color:BLUE,
+      contents:["Input raw + normalized","Match status + score + candidates snapshot","SIREN",
+        "Enrichment (NAF, CA, Effectif, Group)","Salesforce reconciliation status + IDs","Reason codes"] },
+    { name:"Create Candidates", color:ORANGE,
+      contents:["Name","SIREN__c","BillingAddress.*","NACE__c","CA_data__c / CA_date__c","Effectif_data__c / Effectif_date__c"] }
+  ];
+  return detailHeader(s) + `
+    <div class="export-row">
+      ${exports.map((ex,i) => `
+        <div class="export-card" style="background:${hexAlpha(ex.color,0.04)};border:2px solid ${hexAlpha(ex.color,0.12)}">
+          <div class="export-title" style="color:${ex.color}">📥 ${ex.name}</div>
+          ${ex.contents.map(c => `
+            <div class="export-item">
+              <span class="export-dot" style="color:${ex.color}">●</span> ${c}
+            </div>
+          `).join('')}
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+const renderers = { 1:renderStep1, 2:renderStep2, 3:renderStep3, 4:renderStep4, 5:renderStep5, 6:renderStep6, 7:renderStep7 };
+
+function renderDetail() {
+  const s = steps[activeStep - 1];
+  const el = document.getElementById('detail-content');
+  el.className = '';
+  void el.offsetWidth; // trigger reflow for animation
+  el.className = 'fade-in';
+  el.innerHTML = renderers[activeStep](s);
+}
+
+// Init
+renderSidebar();
+renderDetail();
+renderProgress();
+</script>
+</body>
+</html>
