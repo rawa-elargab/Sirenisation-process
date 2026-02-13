@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SIRENISATION — Process Flow</title>
+<title>SIREN — Process Flow</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -145,7 +145,6 @@
   .process-chip {
     padding: 6px 12px; border-radius: 8px; font-size: 12px; color: var(--leyton-blue);
   }
-  .process-arrow { font-weight: 700; font-size: 16px; }
 
   /* Use Case Grid */
   .usecase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
@@ -282,8 +281,8 @@
   <div class="header-circle-2"></div>
   <div class="header-content">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-      <span class="header-tag mono">SIRENISATION</span>
-      <span class="header-version mono">v1.0 — Process Flow</span>
+      <span class="header-tag mono">SIREN</span>
+      <span class="header-version mono">v1.1 — Process Flow</span>
     </div>
     <div class="header-title">French Company Matching &amp; Enrichment</div>
     <div class="header-sub">End-to-end pipeline: Upload → Match → Validate → Enrich → Reconcile → Export</div>
@@ -327,19 +326,19 @@ const BLUE = '#012d48', ORANGE = '#ec6839';
 
 const steps = [
   { id:1, title:"Upload & Column Mapping", icon:"📁", color:ORANGE,
-    description:"User uploads CSV/XLSX file and maps columns to required fields." },
+    description:"User uploads CSV/XLSX file and maps columns to required and optional fields." },
   { id:2, title:"Matching Run", icon:"🔍", color:"#2a7de1",
-    description:"System normalizes company name, retrieves candidates via blocking fallback, scores by name (55%) + address (45%), and classifies each record using composite score thresholds &amp; gap rule." },
+    description:"System normalizes the input, generates candidates via blocking fallback (Postal → City → Name-key → Approx Name), scores candidates, then applies UC-specific thresholds + gap rule to classify each record." },
   { id:3, title:"Assisted Validation", icon:"👤", color:"#8b5cf6",
-    description:"Only for NEEDS_VALIDATION records. User reviews top 3 candidates." },
+    description:"Only for NEEDS_VALIDATION records. User reviews top 3 candidates and confirms, rejects, or skips." },
   { id:4, title:"Enrichment", icon:"📊", color:"#0891b2",
-    description:"For AUTO_MATCH and USER_VALIDATED records, enrich with data from multiple sources." },
+    description:"For AUTO_MATCH and USER_VALIDATED records, enrich with NAF, siège address, company status, financials, and head-of-group." },
   { id:5, title:"Salesforce Reconciliation", icon:"☁️", color:"#0369a1",
-    description:"Match enriched records against Salesforce Accounts using SIREN__c." },
+    description:"Match enriched records against Salesforce Accounts using SIREN__c and update fields where eligible." },
   { id:6, title:"Filters for Creation", icon:"🎯", color:"#7c3aed",
-    description:"User filters records eligible for Salesforce creation." },
+    description:"User filters records eligible for Salesforce creation (SF_NOT_FOUND + confirmed match status)." },
   { id:7, title:"Export", icon:"📤", color:ORANGE,
-    description:"Generate final deliverables for audit and Salesforce creation." },
+    description:"Generate audit-ready full results export and the Salesforce creation candidates export." },
 ];
 
 let activeStep = 1;
@@ -420,11 +419,11 @@ function renderStep1(s) {
 
 function renderStep2(s) {
   const processes = [
-    "Name cleaning &amp; normalization (trim, lowercase, accents, legal forms)",
-    "Candidate retrieval via blocking fallback (Postal Code → City → Name-key → Exact name)",
-    "Fuzzy name matching on candidates (primary signal)",
-    "Address refinement: Postal Code → City → Street (exact or fuzzy)",
-    "Composite score computation &amp; classification (thresholds + gap rule on final score)"
+    "Use-case routing based on completeness (UC1 / UC2 / UC3)",
+    "Name normalization (trim, lowercase, accents, legal forms, spacing)",
+    "Candidate retrieval via blocking fallback (Postal → City → Name-key → Approx Name)",
+    "Scoring (composite) and ranking of candidates",
+    "Decision engine (UC thresholds + gap rule + ambiguity handling)"
   ];
 
   const weights = [
@@ -435,24 +434,38 @@ function renderStep2(s) {
   ];
 
   const blockingLevels = [
-    {level:"1", field:"Postal Code", desc:"Search SIRENE candidates sharing the same postal code"},
-    {level:"2", field:"City", desc:"Fallback if postal code returns zero candidates"},
-    {level:"3", field:"Name-key", desc:"Derived from normalized name; used when no postal code or city available"},
-    {level:"4", field:"Exact Name", desc:"Final fallback — direct name search in SIRENE index"}
+    {level:"1", field:"Postal Code", desc:"Primary blocking when postal code available"},
+    {level:"2", field:"City", desc:"Fallback if postal is missing or yields no candidates"},
+    {level:"3", field:"Name-key", desc:"Used when no postal/city; derived from normalized name"},
+    {level:"4", field:"Approx Name", desc:"Final fallback — approximate name search"}
+  ];
+
+  const thresholds = [
+    {uc:"UC1", text:"AUTO_MATCH if score >= 0.85 AND gap >= 0.05 AND no address contradiction"},
+    {uc:"UC1", text:"NEEDS_VALIDATION if 0.75 <= score < 0.85 OR gap fails"},
+    {uc:"UC1", text:"NO_MATCH if score < 0.75"},
+    {uc:"UC2", text:"AUTO_MATCH if score >= 0.88 AND gap >= 0.05 AND at least 1 strong address confirmation"},
+    {uc:"UC2", text:"NEEDS_VALIDATION if 0.78 <= score < 0.88 OR gap fails OR weak address confidence"},
+    {uc:"UC2", text:"NO_MATCH if score < 0.78"},
+    {uc:"UC3", text:"Auto-match disabled by default; route to validation if score >= 0.90"},
+    {uc:"UC3", text:"NO_MATCH if score < 0.90"},
+    {uc:"UC3", text:"AUTO_MATCH OPTIONAL only if perfect score AND single candidate AND gap >= 0.05"}
   ];
 
   const useCases = [
-    {label:"Complete Info",desc:"Name + Street + Postal + City → strongest matching with all weight components"},
-    {label:"Partial Address",desc:"Name + some address fields → fallback blocking levels; missing fields get zero weight"},
-    {label:"Name Only",desc:"Auto-match if exactly 1 candidate ≥ threshold; otherwise → validation"},
-    {label:"Ambiguous",desc:"Multiple candidates with same high score (e.g. same name, different locations) → forced validation"},
-    {label:"No Match",desc:"No candidate above validation threshold → NO_MATCH"}
+    {label:"UC1 — Full Address",desc:"Name + Street + City + Postal → strongest match signals; UC1 thresholds"},
+    {label:"UC2 — Partial Address",desc:"Name + partial address → best-available blocking + UC2 thresholds"},
+    {label:"UC3 — Name Only",desc:"Name only → validation-first by default to prevent false positives"},
+    {label:"Ambiguous",desc:"Multiple strong candidates or gap rule fails → forced validation"},
+    {label:"Low Coverage",desc:"No candidate above threshold → NO_MATCH"}
   ];
+
   const outcomes = [
-    {status:"AUTO_MATCH",color:"#16a34a",desc:"Exactly 1 candidate above threshold with clear gap"},
+    {status:"AUTO_MATCH",color:"#16a34a",desc:"Exactly 1 candidate above UC threshold with clear gap"},
     {status:"NEEDS_VALIDATION",color:"#d97706",desc:"Top candidates shown for user selection"},
     {status:"NO_MATCH",color:"#dc2626",desc:"No viable candidate above threshold"}
   ];
+
   return detailHeader(s) + `
     <div class="section-label">Matching Pipeline</div>
     <div class="process-flow" style="flex-direction:column;align-items:stretch;gap:4px">
@@ -464,7 +477,7 @@ function renderStep2(s) {
       `).join('')}
     </div>
 
-    <div class="section-label" style="margin-top:20px">Score Weighting <span style="font-weight:400;font-size:10px;color:#94a3b8;letter-spacing:0">(initial — to be validated after first run)</span></div>
+    <div class="section-label" style="margin-top:20px">Score Weighting</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${weights.map(w => `
         <div style="flex:1;min-width:120px;padding:12px;border-radius:10px;background:${hexAlpha(w.color,0.05)};border:1px solid ${hexAlpha(w.color,0.15)}">
@@ -495,12 +508,22 @@ function renderStep2(s) {
     <div style="display:flex;gap:12px;margin-top:20px">
       <div style="flex:1;padding:12px 14px;border-radius:10px;background:${hexAlpha('#2a7de1',0.05)};border:1px solid ${hexAlpha('#2a7de1',0.15)}">
         <div style="font-size:11px;font-weight:700;color:#2a7de1;margin-bottom:4px">📐 Gap Rule</div>
-        <div style="font-size:11px;color:#475569">Computed <strong>only on the final composite score</strong>, not on individual field scores. The difference between the top two ranked candidates determines if the match is unambiguous or requires user validation.</div>
+        <div style="font-size:11px;color:#475569">Computed on the final composite score. If the gap between the top two candidates is below threshold, the record is routed to validation.</div>
       </div>
       <div style="flex:1;padding:12px 14px;border-radius:10px;background:${hexAlpha('#8b5cf6',0.05)};border:1px solid ${hexAlpha('#8b5cf6',0.15)}">
-        <div style="font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px">🔑 Name-Key</div>
-        <div style="font-size:11px;color:#475569">Derived from the normalized &amp; cleaned company name. Used <strong>only during candidate retrieval</strong> (blocking phase) — not during scoring. Limits search space when postal code or city are unavailable.</div>
+        <div style="font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px">🔑 UC Routing</div>
+        <div style="font-size:11px;color:#475569">Use case is derived from available inputs (UC1 full address, UC2 partial, UC3 name-only). Thresholds and auto-match eligibility depend on UC.</div>
       </div>
+    </div>
+
+    <div class="section-label" style="margin-top:20px">UC Thresholds (Decision Engine)</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${thresholds.map(t => `
+        <div style="padding:10px 14px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;gap:10px;align-items:flex-start">
+          <span class="mono" style="font-size:10px;font-weight:800;color:${s.color};background:${hexAlpha(s.color,0.1)};padding:2px 8px;border-radius:6px;min-width:42px;text-align:center">${t.uc}</span>
+          <span style="font-size:11px;color:#475569">${t.text}</span>
+        </div>
+      `).join('')}
     </div>
 
     <div class="section-label" style="margin-top:20px">Use Cases</div>
@@ -512,6 +535,7 @@ function renderStep2(s) {
         </div>
       `).join('')}
     </div>
+
     <div class="section-label" style="margin-top:20px">Classification Outcomes</div>
     <div class="outcome-row">
       ${outcomes.map(o => `
@@ -527,7 +551,7 @@ function renderStep3(s) {
   const actions = [
     {label:"Confirm Match",icon:"✅",result:"USER_VALIDATED",color:"#16a34a"},
     {label:"No Match",icon:"❌",result:"USER_REJECTED → NO_MATCH",color:"#dc2626"},
-    {label:"Skip",icon:"⏭️",result:"SKIPPED (pending)",color:"#6b7280"}
+    {label:"Skip",icon:"⏭️",result:"SKIPPED",color:"#6b7280"}
   ];
   return detailHeader(s) + `
     <div class="trigger-banner warning">
@@ -536,8 +560,8 @@ function renderStep3(s) {
     </div>
     <div class="candidate-box">
       <div class="section-label">Top 3 Candidates Displayed</div>
-      <div class="candidate-item"><span style="color:${s.color}">●</span> Denomination + address + SIREN + score</div>
-      <div class="candidate-item"><span style="color:${s.color}">●</span> Full context: siège address, source, breakdown</div>
+      <div class="candidate-item"><span style="color:${s.color}">●</span> Denomination + siège address + SIREN + score + breakdown</div>
+      <div class="candidate-item"><span style="color:${s.color}">●</span> Clear comparison between candidate #1 and #2 (gap)</div>
     </div>
     <div class="action-row">
       ${actions.map(a => `
@@ -558,14 +582,30 @@ function toggleSource(i) {
 function renderStep4(s) {
   const sources = [
     { name:"SIRENE Unité Légale", index:"fr_siren_unitelegale_raw_zone_v20211214",
-      fields:["Code NAF (activité principale)"], target:"NACE__c", rules:null },
+      fields:["NAF (activité principale)"], target:"NACE__c (optional)", rules:[
+        "Extract activite_principale_unite_legale",
+        "Map to NACE/NAF display as needed"
+      ] },
+    { name:"SIRENE Établissement (Siège)", index:"fr_siren_etablissement_raw_zone_v20211203",
+      fields:["Siège address","Company status (A/C)"], target:"BillingAddress.* + Statut__c", rules:[
+        "Join by SIREN + NIC siège to select the head establishment (siège)",
+        "Address comes from établissement siège",
+        "etat_administratif_etablissement used as status (A/C)"
+      ] },
     { name:"INPI Financial Index", index:"fr_financials_data_ingested_raw_zone_v20241114",
-      fields:["Chiffre d'affaire (CA)","Effectif"], target:"CA_data__c / Effectif_data__c",
-      rules:["One bilan per SIREN per fiscal year","Prefer BILAN C over BILAN S","Most recent dateCloture wins"] },
+      fields:["Chiffre d'affaire (CA)","Effectif"], target:"CA_data__c / Effectif_data__c", rules:[
+        "Select 1 bilan per SIREN per fiscal year (dateCloture)",
+        "Prefer BILAN C when available",
+        "Else choose most recent BILAN S (by dateCloture, then recency)",
+        "CA_date & Effectif_date = selected dateCloture"
+      ] },
     { name:"INPI Hierarchy", index:"SQL Server dataset",
-      fields:["SIREN tête de groupe","Denomination tête de groupe"], target:"Head of Group",
-      rules:["Filter rolePourEntreprise IN ('1','2')","Retrieve siren + enseigne"] }
+      fields:["SIREN tête de groupe","Denomination tête de groupe"], target:"Head of Group", rules:[
+        "Retrieve from établissement where rolePourEntreprise IN ('1','2')",
+        "If not found: flag NO_GROUP_FOUND"
+      ] }
   ];
+
   return detailHeader(s) + `
     <div class="trigger-banner success">
       <span style="font-size:16px">✓</span>
@@ -621,13 +661,16 @@ function renderStep6(s) {
   const eligibility = [
     "match_status = AUTO_MATCH or USER_VALIDATED",
     "sf_status = SF_NOT_FOUND",
-    "final_score ≥ threshold (e.g. 85)"
+    "final_score >= threshold (example: 0.85+)"
   ];
   const filters = [
-    {name:"NAF / NACE",type:"Multi-select"},{name:"Turnover range",type:"Range slider"},
-    {name:"Effectif range",type:"Range slider"},{name:"Tête de groupe",type:"Text / Select"},
-    {name:"Match score",type:"Range"},{name:"City / Postal code",type:"Text"},
-    {name:"Source",type:"Select (SIRENE/INPI/hybrid)"}
+    {name:"NAF / NACE",type:"Multi-select"},
+    {name:"Turnover (CA)",type:"Range slider"},
+    {name:"Effectif",type:"Range slider"},
+    {name:"Tête de groupe",type:"Text / Select"},
+    {name:"Match score",type:"Range"},
+    {name:"City / Postal code",type:"Text"},
+    {name:"Company status (A/C)",type:"Select"}
   ];
   return detailHeader(s) + `
     <div class="section-label">Eligibility Criteria</div>
@@ -646,14 +689,29 @@ function renderStep6(s) {
 function renderStep7(s) {
   const exports = [
     { name:"Full Results (Audit)", color:BLUE,
-      contents:["Input raw + normalized","Match status + score + candidates snapshot","SIREN",
-        "Enrichment (NAF, CA, Effectif, Group)","Salesforce reconciliation status + IDs","Reason codes"] },
+      contents:[
+        "Input raw + normalized",
+        "UC (use case) + match status + final score + gap",
+        "Candidates snapshot (where relevant)",
+        "SIREN (if confirmed)",
+        "Enrichment: NAF, siège address, status, CA/effectif, head-of-group",
+        "Salesforce reconciliation status + Account ID(s)",
+        "Reason codes"
+      ] },
     { name:"Create Candidates", color:ORANGE,
-      contents:["Name","SIREN__c","BillingAddress.*","NACE__c","CA_data__c / CA_date__c","Effectif_data__c / Effectif_date__c"] }
+      contents:[
+        "Name",
+        "SIREN__c",
+        "BillingAddress.*",
+        "NACE__c",
+        "Statut__c",
+        "CA_data__c / CA_date__c",
+        "Effectif_data__c / Effectif_date__c"
+      ] }
   ];
   return detailHeader(s) + `
     <div class="export-row">
-      ${exports.map((ex,i) => `
+      ${exports.map(ex => `
         <div class="export-card" style="background:${hexAlpha(ex.color,0.04)};border:2px solid ${hexAlpha(ex.color,0.12)}">
           <div class="export-title" style="color:${ex.color}">📥 ${ex.name}</div>
           ${ex.contents.map(c => `
@@ -672,7 +730,7 @@ function renderDetail() {
   const s = steps[activeStep - 1];
   const el = document.getElementById('detail-content');
   el.className = '';
-  void el.offsetWidth; // trigger reflow for animation
+  void el.offsetWidth;
   el.className = 'fade-in';
   el.innerHTML = renderers[activeStep](s);
 }
